@@ -8,7 +8,7 @@ local player = Players.LocalPlayer
 local camera = Workspace.CurrentCamera
 
 -- === УДАЛЕНИЕ СТАРОГО МЕНЮ ===
-local guiName = "DeltaSmoothFlyMenu"
+local guiName = "DeltaFixedFlyMenu"
 local targetGuiParent = player:FindFirstChild("PlayerGui")
 pcall(function()
     targetGuiParent = (typeof(gethui) == "function" and gethui()) or CoreGui 
@@ -36,7 +36,7 @@ OpenBtn.Size = UDim2.new(0, 50, 0, 50)
 OpenBtn.Position = UDim2.new(0, 10, 0, 10)
 OpenBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 OpenBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-OpenBtn.Text = "⚙️"
+OpenBtn.Text = "🫩"
 OpenBtn.Font = Enum.Font.GothamBold
 OpenBtn.TextSize = 24
 OpenBtn.Parent = ScreenGui
@@ -62,7 +62,7 @@ Title.Size = UDim2.new(1, -30, 0, 30)
 Title.Position = UDim2.new(0, 10, 0, 0)
 Title.BackgroundTransparency = 1
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Text = "Smooth Fly"
+Title.Text = "Fixed Fly"
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 16
 Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -168,11 +168,11 @@ FlyBtn.Activated:Connect(function()
     isFlying = not isFlying
 
     if isFlying then
-        FlyBtn.Text = "полет на шахеде: ВКЛ"
+        FlyBtn.Text = "Полет: ВКЛ"
         FlyBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
         humanoid.PlatformStand = true
     else
-        FlyBtn.Text = "Полет на шохеде: ВЫКЛ"
+        FlyBtn.Text = "Полет: ВЫКЛ"
         FlyBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
         humanoid.PlatformStand = false
     end
@@ -189,7 +189,7 @@ NoclipBtn.Activated:Connect(function()
     end
 end)
 
--- Плавный полет (без тряски, через прямую математику CFrame)
+-- Абсолютно стабильный полет (без падения вниз при остановке)
 RunService.RenderStepped:Connect(function(dt)
     local character = player.Character
     if not character or not character:FindFirstChild("HumanoidRootPart") then return end
@@ -199,16 +199,16 @@ RunService.RenderStepped:Connect(function(dt)
         local controls = PlayerModule:GetControls()
         local moveVector = controls:GetMoveVector()
 
-        -- Считаем направление относительно камеры
         local moveDir = (camera.CFrame.RightVector * moveVector.X) - (camera.CFrame.LookVector * moveVector.Z)
         
-        -- Если мы не жмем на джойстик/WASD, останавливаемся в воздухе без рывков
+        -- Вычисляем новую позицию
+        local currentPos = hrp.Position
         if moveVector.Magnitude > 0 then
-            hrp.CFrame = hrp.CFrame + (moveDir * flySpeed * dt)
+            currentPos = currentPos + (moveDir * flySpeed * dt)
         end
         
-        -- Синхронизируем поворот персонажа с камерой плавно и без вибрации
-        hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + camera.CFrame.LookVector)
+        -- Жестко фиксируем позицию и поворот без возможности падения
+        hrp.CFrame = CFrame.new(currentPos, currentPos + camera.CFrame.LookVector)
         hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
         hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
     end
