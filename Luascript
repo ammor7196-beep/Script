@@ -8,7 +8,7 @@ local player = Players.LocalPlayer
 local camera = Workspace.CurrentCamera
 
 -- === УДАЛЕНИЕ СТАРОГО МЕНЮ ===
-local guiName = "DeltaPerfectFly"
+local guiName = "DeltaCenterFly"
 local targetGuiParent = player:FindFirstChild("PlayerGui")
 pcall(function()
     targetGuiParent = (typeof(gethui) == "function" and gethui()) or CoreGui 
@@ -63,7 +63,7 @@ Title.Size = UDim2.new(1, -30, 0, 30)
 Title.Position = UDim2.new(0, 10, 0, 0)
 Title.BackgroundTransparency = 1
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Text = "Perfect Fly"
+Title.Text = "Centered Fly"
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 16
 Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -174,7 +174,6 @@ FlyBtn.Activated:Connect(function()
         FlyBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
         humanoid.PlatformStand = true
 
-        -- Создаем правильные физические двигатели для стабильного парения
         bv = Instance.new("BodyVelocity")
         bv.Velocity = Vector3.new(0, 0, 0)
         bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
@@ -182,7 +181,7 @@ FlyBtn.Activated:Connect(function()
 
         bg = Instance.new("BodyGyro")
         bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-        bg.CFrame = hrp.CFrame
+        bg.CFrame = camera.CFrame
         bg.Parent = hrp
     else
         FlyBtn.Text = "Полет: ВЫКЛ"
@@ -204,7 +203,7 @@ NoclipBtn.Activated:Connect(function()
     end
 end)
 
--- Плавное управление через физику без тряски и падений
+-- Строгая привязка к центру камеры
 RunService.RenderStepped:Connect(function()
     local character = player.Character
     if not character or not character:FindFirstChild("HumanoidRootPart") then return end
@@ -214,12 +213,11 @@ RunService.RenderStepped:Connect(function()
         local controls = PlayerModule:GetControls()
         local moveVector = controls:GetMoveVector()
 
-        -- Считаем направление движения по камере
         local moveDir = (camera.CFrame.RightVector * moveVector.X) - (camera.CFrame.LookVector * moveVector.Z)
         
-        -- Управляем скоростью и полной остановкой в воздухе
         bv.Velocity = moveDir * flySpeed
-        bg.CFrame = camera.CFrame
+        -- Фиксируем поворот ровно по центру взгляда камеры (без смещений влево/вправо)
+        bg.CFrame = camera.CFrame - camera.CFrame.Position + hrp.Position
     end
 end)
 
