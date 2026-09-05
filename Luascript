@@ -2,18 +2,15 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
 
 local player = Players.LocalPlayer
 local camera = Workspace.CurrentCamera
 
--- === УДАЛЕНИЕ СТАРОГО МЕНЮ (чтобы не было дублей при повторном запуске) ===
-local guiName = "DeltaMobileModMenu"
-local CoreGui = game:GetService("CoreGui")
-
--- Пытаемся найти безопасное место для GUI (защита от античита)
+-- === УДАЛЕНИЕ СТАРОГО МЕНЮ ===
+local guiName = "DeltaSmoothFlyMenu"
 local targetGuiParent = player:FindFirstChild("PlayerGui")
 pcall(function()
-    -- gethui() - это спец. функция экзекуторов, если ее нет, используем CoreGui
     targetGuiParent = (typeof(gethui) == "function" and gethui()) or CoreGui 
 end)
 
@@ -26,18 +23,14 @@ local flySpeed = 50
 local isFlying = false
 local isNoclip = false
 
-local bodyVelocity
-local bodyGyro
-
 local PlayerModule = require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule"))
 
--- === СОЗДАНИЕ ИНТЕРФЕЙСА (GUI) ===
+-- === ИНТЕРФЕЙС (GUI) ===
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = guiName
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = targetGuiParent
 
--- Кнопка открытия меню (Плавающая)
 local OpenBtn = Instance.new("TextButton")
 OpenBtn.Size = UDim2.new(0, 50, 0, 50)
 OpenBtn.Position = UDim2.new(0, 10, 0, 10)
@@ -52,7 +45,6 @@ local OpenBtnCorner = Instance.new("UICorner")
 OpenBtnCorner.CornerRadius = UDim.new(1, 0)
 OpenBtnCorner.Parent = OpenBtn
 
--- Главная панель (Меню)
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 200, 0, 200)
 MainFrame.Position = UDim2.new(0, 70, 0, 10)
@@ -65,19 +57,17 @@ local FrameCorner = Instance.new("UICorner")
 FrameCorner.CornerRadius = UDim.new(0, 8)
 FrameCorner.Parent = MainFrame
 
--- Заголовок меню
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -30, 0, 30)
 Title.Position = UDim2.new(0, 10, 0, 0)
 Title.BackgroundTransparency = 1
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Text = "Delta Menu"
+Title.Text = "Smooth Fly"
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 16
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = MainFrame
 
--- Кнопка закрытия "X"
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 30, 0, 30)
 CloseBtn.Position = UDim2.new(1, -30, 0, 0)
@@ -88,7 +78,6 @@ CloseBtn.Font = Enum.Font.GothamBold
 CloseBtn.TextSize = 16
 CloseBtn.Parent = MainFrame
 
--- Функция для создания кнопок в меню
 local function createButton(text, yPos)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(0.9, 0, 0, 35)
@@ -110,7 +99,6 @@ end
 local FlyBtn = createButton("Полет: ВЫКЛ", 40)
 local NoclipBtn = createButton("Noclip: ВЫКЛ", 85)
 
--- Поле ввода для СВОЕЙ скорости
 local SpeedInput = Instance.new("TextBox")
 SpeedInput.Size = UDim2.new(0.9, 0, 0, 35)
 SpeedInput.Position = UDim2.new(0.05, 0, 0, 130)
@@ -127,30 +115,24 @@ local SpeedCorner = Instance.new("UICorner")
 SpeedCorner.CornerRadius = UDim.new(0, 6)
 SpeedCorner.Parent = SpeedInput
 
--- === ФУНКЦИЯ ДЛЯ ПЕРЕМЕЩЕНИЯ GUI (Draggable) ===
+-- Перемещение меню
 local function makeDraggable(gui)
     local dragging, dragInput, dragStart, startPos
-
     gui.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             dragStart = input.Position
             startPos = gui.Position
-            
             input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
             end)
         end
     end)
-
     gui.InputChanged:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
             dragInput = input
         end
     end)
-
     UserInputService.InputChanged:Connect(function(input)
         if input == dragInput and dragging then
             local delta = input.Position - dragStart
@@ -161,8 +143,6 @@ end
 
 makeDraggable(MainFrame)
 makeDraggable(OpenBtn)
-
--- === ЛОГИКА РАБОТЫ ===
 
 OpenBtn.Activated:Connect(function()
     MainFrame.Visible = true
@@ -176,43 +156,25 @@ end)
 
 SpeedInput.FocusLost:Connect(function()
     local newSpeed = tonumber(SpeedInput.Text)
-    if newSpeed then
-        flySpeed = newSpeed
-    else
-        SpeedInput.Text = tostring(flySpeed)
-    end
+    if newSpeed then flySpeed = newSpeed else SpeedInput.Text = tostring(flySpeed) end
 end)
 
+-- Включение/Выключение полета
 FlyBtn.Activated:Connect(function()
     local character = player.Character
     if not character or not character:FindFirstChild("HumanoidRootPart") then return end
-    
-    local hrp = character.HumanoidRootPart
     local humanoid = character:FindFirstChildOfClass("Humanoid")
 
     isFlying = not isFlying
 
     if isFlying then
-        FlyBtn.Text = "Полет: ВКЛ"
+        FlyBtn.Text = "полет на шахеде: ВКЛ"
         FlyBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
         humanoid.PlatformStand = true
-
-        bodyVelocity = Instance.new("BodyVelocity")
-        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-        bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-        bodyVelocity.Parent = hrp
-
-        bodyGyro = Instance.new("BodyGyro")
-        bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-        bodyGyro.D = 10
-        bodyGyro.P = 10000
-        bodyGyro.Parent = hrp
     else
-        FlyBtn.Text = "Полет: ВЫКЛ"
+        FlyBtn.Text = "Полет на шохеде: ВЫКЛ"
         FlyBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
         humanoid.PlatformStand = false
-        if bodyVelocity then bodyVelocity:Destroy() end
-        if bodyGyro then bodyGyro:Destroy() end
     end
 end)
 
@@ -227,23 +189,32 @@ NoclipBtn.Activated:Connect(function()
     end
 end)
 
--- Обновление полета
-RunService.RenderStepped:Connect(function()
+-- Плавный полет (без тряски, через прямую математику CFrame)
+RunService.RenderStepped:Connect(function(dt)
     local character = player.Character
     if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+    local hrp = character.HumanoidRootPart
 
-    if isFlying and bodyVelocity and bodyGyro then
+    if isFlying then
         local controls = PlayerModule:GetControls()
         local moveVector = controls:GetMoveVector()
 
+        -- Считаем направление относительно камеры
         local moveDir = (camera.CFrame.RightVector * moveVector.X) - (camera.CFrame.LookVector * moveVector.Z)
-
-        bodyVelocity.Velocity = moveDir * flySpeed
-        bodyGyro.CFrame = camera.CFrame
+        
+        -- Если мы не жмем на джойстик/WASD, останавливаемся в воздухе без рывков
+        if moveVector.Magnitude > 0 then
+            hrp.CFrame = hrp.CFrame + (moveDir * flySpeed * dt)
+        end
+        
+        -- Синхронизируем поворот персонажа с камерой плавно и без вибрации
+        hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + camera.CFrame.LookVector)
+        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
     end
 end)
 
--- Обновление Noclip
+-- Noclip
 RunService.Stepped:Connect(function()
     if isNoclip then
         local character = player.Character
