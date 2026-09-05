@@ -1,22 +1,34 @@
+local Fluent = loadstring(game:HttpGet("https://github.com"))()
+
+-- Создаем окно чита
+local Window = Fluent:CreateWindow({
+    Title = "Mobile Fly & Noclip",
+    SubTitle = "by AI Assistant",
+    TabWidth = 140,
+    Size = UDim2.fromOffset(450, 280),
+    Acrylic = false,
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl
+})
+
+-- Добавляем вкладку с функциями
+local Tabs = {
+    Main = Window:AddTab({ Title = "Функции", Icon = "home" })
+}
+
+-- Глобальные переменные для работы функций
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 local flying = false
+local noclip = false
 local flySpeed = 50
 local bv, bg
 local noclipConnection
 
--- Уведомление в игровой чат, что скрипт готов
-task.wait(1)
-game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
-    Text = "[Скрипт Запущен] Напишите в чат /fly для полета или /speed ЧИСЛО",
-    Color = Color3.fromRGB(0, 255, 100),
-    Font = Enum.Font.SourceSansBold,
-    TextSize = 18
-})
-
-function startFlying()
+-- Логика полета по направлению камеры
+local function startFlying()
     local character = LocalPlayer.Character
     if not character or not character:FindFirstChild("HumanoidRootPart") then return end
     local hrp = character.HumanoidRootPart
@@ -35,25 +47,16 @@ function startFlying()
     bv.maxForce = Vector3.new(9e9, 9e9, 9e9)
     bv.Parent = hrp
     
-    -- Ноуклип (прохождение сквозь стены)
-    noclipConnection = RunService.Stepped:Connect(function()
-        if flying and character then
-            for _, part in pairs(character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = false
-                end
-            end
-        end
-    end)
-    
-    -- Движение за мобильным джойстиком
     local camera = workspace.CurrentCamera
-    spawn(function()
+    task.spawn(function()
         while flying and character and hrp.Parent do
             RunService.RenderStepped:Wait()
             local direction = Vector3.new(0, 0, 0)
             if humanoid and humanoid.MoveDirection.Magnitude > 0 then
-                direction = humanoid.MoveDirection
+                local layoutRotation = math.atan2(-humanoid.MoveDirection.X, -humanoid.MoveDirection.Z)
+                local cameraRotation = math.atan2(-camera.CFrame.LookVector.X, -camera.CFrame.LookVector.Z)
+                local finalRotation = layoutRotation - cameraRotation
+                direction = (camera.CFrame * CFrame.Angles(0, finalRotation, 0)).LookVector
             end
             bv.velocity = direction * flySpeed
             bg.cframe = camera.CFrame
@@ -61,10 +64,8 @@ function startFlying()
     end)
 end
 
-function stopFlying()
+local function stopFlying()
     flying = false
-    if noclipConnection then noclipConnection:Disconnect() end
-    
     local character = LocalPlayer.Character
     if character then
         local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -77,50 +78,59 @@ function stopFlying()
     end
 end
 
--- Функция переключения
-function toggleFly()
-    flying = not flying
+-- Логика Ноуклипа (сквозь стены)
+noclipConnection = RunService.Stepped:Connect(function()
+    if noclip then
+        local character = LocalPlayer.Character
+        if character then
+            for _, part in pairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+        end
+    end
+end)
+
+-- НАСТРОЙКА ЭЛЕМЕНТОВ МЕНЮ --
+
+-- 1. Переключатель FLY (Полет)
+local FlyToggle = Tabs.Main:AddToggle("FlyToggle", {Title = "Включить Полет (Fly)", Default = false})
+FlyToggle:OnChanged(function(Value)
+    flying = Value
     if flying then
         startFlying()
     else
         stopFlying()
     end
-end
+end)
 
--- УПРАВЛЕНИЕ ЧЕРЕЗ ЧАТ И ПРЫЖКИ (Для обхода блокировок мобильных инжекторов)
-LocalPlayer.Chatted:Connect(function(message)
-    local msg = message:lower()
-    
-    -- Команда в чат /fly включает и выключает полет
-    if msg == "/fly" then
-        toggleFly()
-    end
-    
-    -- Команда в чат /speed ЧИСЛО (например, /speed 100) меняет скорость
-    if msg:sub(1, 7) == "/speed " then
-        local speedArg = msg:sub(8)
-        local num = tonumber(speedArg)
+-- 2. Поле ввода скорости (Input)
+local SpeedInput = Tabs.Main:AddInput("SpeedInput", {
+    Title = "Скорость полета",
+    Default = "50",
+    Numeric = true,
+    Finished = true,
+    Callback = function(Value)
+        local num = tonumber(Value)
         if num then
             flySpeed = num
         end
     end
+})
+
+-- 3. Переключатель NOCLIP (Сквозь стены)
+local NoclipToggle = Tabs.Main:AddToggle("NoclipToggle", {Title = "Сквозь стены (Noclip)", Default = false})
+NoclipToggle:OnChanged(function(Value)
+    noclip = Value
 end)
 
--- Двойной прыжок для включения/выключения на случай, если чат заблокирован
-local lastJump = 0
-LocalPlayer.CharacterAdded:Connect(function(char)
-    local humanoid = char:WaitForChild("Humanoid")
-    humanoid.Jumping:Connect(function()
-        local now = tick()
-        if now - lastJump < 0.4 then -- Если нажали прыжок дважды за полсекунды
-            toggleFly()
-        end
-        lastJump = now
-    end)
-end)
-
--- Сброс при смерти
+-- Авто-сброс при перезагрузке персонажа (смерти)
 LocalPlayer.CharacterAdded:Connect(function()
     flying = false
-    if noclipConnection then noclipConnection:Disconnect() end
+    noclip = false
+    FlyToggle:SetValue(false)
+    NoclipToggle:SetValue(false)
 end)
+
+Window:SelectTab(1)
