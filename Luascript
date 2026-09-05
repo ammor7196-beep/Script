@@ -8,7 +8,7 @@ local player = Players.LocalPlayer
 local camera = Workspace.CurrentCamera
 
 -- === УДАЛЕНИЕ СТАРОГО МЕНЮ ===
-local guiName = "DeltaAntiGravityFly"
+local guiName = "DeltaPerfectFly"
 local targetGuiParent = player:FindFirstChild("PlayerGui")
 pcall(function()
     targetGuiParent = (typeof(gethui) == "function" and gethui()) or CoreGui 
@@ -22,8 +22,8 @@ end
 local flySpeed = 50
 local isFlying = false
 local isNoclip = false
-local antiGravityObj = nil
 
+local bv, bg
 local PlayerModule = require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule"))
 
 -- === ИНТЕРФЕЙС (GUI) ===
@@ -63,7 +63,7 @@ Title.Size = UDim2.new(1, -30, 0, 30)
 Title.Position = UDim2.new(0, 10, 0, 0)
 Title.BackgroundTransparency = 1
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Text = "No-Fall Fly"
+Title.Text = "Perfect Fly"
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 16
 Title.TextXAlignment = Enum.TextXAlignment.Left
@@ -174,21 +174,22 @@ FlyBtn.Activated:Connect(function()
         FlyBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
         humanoid.PlatformStand = true
 
-        -- Создаем специальный антигравитационный компонент
-        if not antiGravityObj then
-            antiGravityObj = Instance.new("BodyVelocity")
-            antiGravityObj.Velocity = Vector3.new(0, 0, 0)
-            antiGravityObj.MaxForce = Vector3.new(0, math.huge, 0) -- Тянем ТОЛЬКО вверх/вниз, игнорируя стены
-            antiGravityObj.Parent = hrp
-        end
+        -- Создаем правильные физические двигатели для стабильного парения
+        bv = Instance.new("BodyVelocity")
+        bv.Velocity = Vector3.new(0, 0, 0)
+        bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        bv.Parent = hrp
+
+        bg = Instance.new("BodyGyro")
+        bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        bg.CFrame = hrp.CFrame
+        bg.Parent = hrp
     else
         FlyBtn.Text = "Полет: ВЫКЛ"
         FlyBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
         humanoid.PlatformStand = false
-        if antiGravityObj then
-            antiGravityObj:Destroy()
-            antiGravityObj = nil
-        end
+        if bv then bv:Destroy() bv = nil end
+        if bg then bg:Destroy() bg = nil end
     end
 end)
 
@@ -203,27 +204,22 @@ NoclipBtn.Activated:Connect(function()
     end
 end)
 
--- Основной цикл полета
-RunService.RenderStepped:Connect(function(dt)
+-- Плавное управление через физику без тряски и падений
+RunService.RenderStepped:Connect(function()
     local character = player.Character
     if not character or not character:FindFirstChild("HumanoidRootPart") then return end
     local hrp = character.HumanoidRootPart
 
-    if isFlying then
+    if isFlying and bv and bg then
         local controls = PlayerModule:GetControls()
         local moveVector = controls:GetMoveVector()
 
+        -- Считаем направление движения по камере
         local moveDir = (camera.CFrame.RightVector * moveVector.X) - (camera.CFrame.LookVector * moveVector.Z)
         
-        local currentPos = hrp.Position
-        if moveVector.Magnitude > 0 then
-            currentPos = currentPos + (moveDir * flySpeed * dt)
-        end
-        
-        -- Фиксация позиции и взгляда камеры без срывов вниз
-        hrp.CFrame = CFrame.new(currentPos, currentPos + camera.CFrame.LookVector)
-        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-        hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+        -- Управляем скоростью и полной остановкой в воздухе
+        bv.Velocity = moveDir * flySpeed
+        bg.CFrame = camera.CFrame
     end
 end)
 
