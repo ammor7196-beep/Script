@@ -1,169 +1,47 @@
--- Создание GUI
-local ScreenGui = Instance.new("ScreenGui")
-local MainFrame = Instance.new("Frame")
-local Title = Instance.new("TextLabel")
-local ToggleButton = Instance.new("TextButton")
-local SpeedLabel = Instance.new("TextLabel")
-local SpeedSlider = Instance.new("TextBox")
-local MobileToggle = Instance.new("TextButton")
-
-ScreenGui.Parent = game.CoreGui
-ScreenGui.ResetOnSpawn = false
-
--- Главное меню
-MainFrame.Name = "FlyMenu"
-MainFrame.Parent = ScreenGui
-MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-MainFrame.Position = UDim2.new(0.1, 0, 0.2, 0)
-MainFrame.Size = UDim2.new(0, 200, 0, 180)
-MainFrame.Active = true
-MainFrame.Draggable = true 
-
-Title.Parent = MainFrame
-Title.Size = UDim2.new(1, 0, 0, 30)
-Title.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-Title.Text = "Fly + Noclip (Mobile Fix)"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.TextSize = 14
-
-ToggleButton.Parent = MainFrame
-ToggleButton.Position = UDim2.new(0.1, 0, 0.25, 0)
-ToggleButton.Size = UDim2.new(0.8, 0, 0, 40)
-ToggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-ToggleButton.Text = "Полет: ВЫКЛ"
-ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleButton.TextSize = 14
-
-SpeedLabel.Parent = MainFrame
-SpeedLabel.Position = UDim2.new(0.1, 0, 0.52, 0)
-SpeedLabel.Size = UDim2.new(0.8, 0, 0, 20)
-SpeedLabel.Text = "Скорость полета:"
-SpeedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-SpeedLabel.TextBackgroundTransparency = 1
-SpeedLabel.TextSize = 14
-
-SpeedSlider.Parent = MainFrame
-SpeedSlider.Position = UDim2.new(0.1, 0, 0.68, 0)
-SpeedSlider.Size = UDim2.new(0.8, 0, 0, 30)
-SpeedSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-SpeedSlider.Text = "50"
-SpeedSlider.TextColor3 = Color3.fromRGB(255, 255, 255)
-SpeedSlider.TextSize = 14
-
--- Плавающая кнопка GUI
-MobileToggle.Name = "MobileToggle"
-MobileToggle.Parent = ScreenGui
-MobileToggle.Position = UDim2.new(0, 10, 0, 50) 
-MobileToggle.Size = UDim2.new(0, 55, 0, 40)
-MobileToggle.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-MobileToggle.Text = "GUI"
-MobileToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-MobileToggle.TextSize = 14
-MobileToggle.Active = true
-MobileToggle.Draggable = true 
-
--- Логика полета и Noclip
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
-local flying = false
-local flySpeed = 50
-local bv, bg
-local noclipConnection
+local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local hrp = character:WaitForChild("HumanoidRootPart")
+local humanoid = character:WaitForChild("Humanoid")
 
-function startFlying()
-    local character = LocalPlayer.Character
-    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
-    local hrp = character.HumanoidRootPart
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    
-    if humanoid then humanoid.PlatformStand = true end
-    
-    bg = Instance.new("BodyGyro")
-    bg.P = 9e4
-    bg.maxTorque = Vector3.new(9e9, 9e9, 9e9)
-    bg.cframe = hrp.CFrame
-    bg.Parent = hrp
-    
-    bv = Instance.new("BodyVelocity")
-    bv.velocity = Vector3.new(0, 0.1, 0)
-    bv.maxForce = Vector3.new(9e9, 9e9, 9e9)
-    bv.Parent = hrp
-    
-    -- Исправленный Noclip для мобильных устройств
-    noclipConnection = RunService.Stepped:Connect(function()
-        if flying and character then
-            for _, part in pairs(character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = false
-                end
-            end
-        end
-    end)
-    
-    -- Цикл полета (направление по джойстику + камере)
-    local camera = workspace.CurrentCamera
-    spawn(function()
-        while flying and character and hrp.Parent do
-            RunService.RenderStepped:Wait()
-            local direction = Vector3.new(0, 0, 0)
-            
-            if humanoid and humanoid.MoveDirection.Magnitude > 0 then
-                direction = humanoid.MoveDirection
-            end
-            
-            bv.velocity = direction * flySpeed
-            bg.cframe = camera.CFrame
-        end
-    end)
-end
+-- Настройка скорости полета
+local flySpeed = 60
 
-function stopFlying()
-    flying = false
-    if noclipConnection then noclipConnection:Disconnect() end
-    
-    local character = LocalPlayer.Character
+-- 1. Сразу включаем левитацию персонажа
+humanoid.PlatformStand = true
+
+local bg = Instance.new("BodyGyro", hrp)
+bg.P = 9e4
+bg.maxTorque = Vector3.new(9e9, 9e9, 9e9)
+bg.cframe = hrp.CFrame
+
+local bv = Instance.new("BodyVelocity", hrp)
+bv.maxForce = Vector3.new(9e9, 9e9, 9e9)
+bv.velocity = Vector3.new(0, 0, 0)
+
+-- 2. Сразу включаем Ноуклип (сквозь стены)
+RunService.Stepped:Connect(function()
     if character then
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
-        if humanoid then humanoid.PlatformStand = false end
-        local hrp = character:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            if bg then bg:Destroy() end
-            if bv then bv:Destroy() end
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
         end
     end
-end
+end)
 
--- ИСПРАВЛЕНИЕ НАЖАТИЙ ДЛЯ ТЕЛЕФОНА (Используем Activated вместо MouseButton1Click)
-ToggleButton.Activated:Connect(function()
-    flying = not flying
-    if flying then
-        ToggleButton.Text = "Полет: ВКЛ"
-        ToggleButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
-        startFlying()
-    else
-        ToggleButton.Text = "Полет: ВЫКЛ"
-        ToggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-        stopFlying()
+-- 3. Управление: персонаж летит туда, куда вы двигаете мобильный джойстик
+RunService.RenderStepped:Connect(function()
+    local camera = workspace.CurrentCamera
+    local direction = Vector3.new(0, 0, 0)
+    
+    if humanoid and humanoid.MoveDirection.Magnitude > 0 then
+        direction = humanoid.MoveDirection
     end
-end)
-
--- Скрытие / Показ меню по нажатию на кнопку GUI (тоже через Activated)
-MobileToggle.Activated:Connect(function()
-    MainFrame.Visible = not MainFrame.Visible
-end)
-
--- Ввод скорости
-SpeedSlider.FocusLost:Connect(function()
-    local num = tonumber(SpeedSlider.Text)
-    if num then flySpeed = num else SpeedSlider.Text = tostring(flySpeed) end
-end)
-
--- Сброс при смерти
-LocalPlayer.CharacterAdded:Connect(function()
-    flying = false
-    ToggleButton.Text = "Полет: ВЫКЛ"
-    ToggleButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-    if noclipConnection then noclipConnection:Disconnect() end
+    
+    bv.velocity = direction * flySpeed
+    bg.cframe = camera.CFrame
 end)
