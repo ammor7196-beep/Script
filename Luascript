@@ -1,47 +1,126 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
-local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local hrp = character:WaitForChild("HumanoidRootPart")
-local humanoid = character:WaitForChild("Humanoid")
+local flying = false
+local flySpeed = 50
+local bv, bg
+local noclipConnection
 
--- Настройка скорости полета
-local flySpeed = 60
+-- Уведомление в игровой чат, что скрипт готов
+task.wait(1)
+game:GetService("StarterGui"):SetCore("ChatMakeSystemMessage", {
+    Text = "[Скрипт Запущен] Напишите в чат /fly для полета или /speed ЧИСЛО",
+    Color = Color3.fromRGB(0, 255, 100),
+    Font = Enum.Font.SourceSansBold,
+    TextSize = 18
+})
 
--- 1. Сразу включаем левитацию персонажа
-humanoid.PlatformStand = true
-
-local bg = Instance.new("BodyGyro", hrp)
-bg.P = 9e4
-bg.maxTorque = Vector3.new(9e9, 9e9, 9e9)
-bg.cframe = hrp.CFrame
-
-local bv = Instance.new("BodyVelocity", hrp)
-bv.maxForce = Vector3.new(9e9, 9e9, 9e9)
-bv.velocity = Vector3.new(0, 0, 0)
-
--- 2. Сразу включаем Ноуклип (сквозь стены)
-RunService.Stepped:Connect(function()
-    if character then
-        for _, part in pairs(character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
+function startFlying()
+    local character = LocalPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+    local hrp = character.HumanoidRootPart
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    
+    if humanoid then humanoid.PlatformStand = true end
+    
+    bg = Instance.new("BodyGyro")
+    bg.P = 9e4
+    bg.maxTorque = Vector3.new(9e9, 9e9, 9e9)
+    bg.cframe = hrp.CFrame
+    bg.Parent = hrp
+    
+    bv = Instance.new("BodyVelocity")
+    bv.velocity = Vector3.new(0, 0.1, 0)
+    bv.maxForce = Vector3.new(9e9, 9e9, 9e9)
+    bv.Parent = hrp
+    
+    -- Ноуклип (прохождение сквозь стены)
+    noclipConnection = RunService.Stepped:Connect(function()
+        if flying and character then
+            for _, part in pairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
             end
+        end
+    end)
+    
+    -- Движение за мобильным джойстиком
+    local camera = workspace.CurrentCamera
+    spawn(function()
+        while flying and character and hrp.Parent do
+            RunService.RenderStepped:Wait()
+            local direction = Vector3.new(0, 0, 0)
+            if humanoid and humanoid.MoveDirection.Magnitude > 0 then
+                direction = humanoid.MoveDirection
+            end
+            bv.velocity = direction * flySpeed
+            bg.cframe = camera.CFrame
+        end
+    end)
+end
+
+function stopFlying()
+    flying = false
+    if noclipConnection then noclipConnection:Disconnect() end
+    
+    local character = LocalPlayer.Character
+    if character then
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid then humanoid.PlatformStand = false end
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            if bg then bg:Destroy() end
+            if bv then bv:Destroy() end
+        end
+    end
+end
+
+-- Функция переключения
+function toggleFly()
+    flying = not flying
+    if flying then
+        startFlying()
+    else
+        stopFlying()
+    end
+end
+
+-- УПРАВЛЕНИЕ ЧЕРЕЗ ЧАТ И ПРЫЖКИ (Для обхода блокировок мобильных инжекторов)
+LocalPlayer.Chatted:Connect(function(message)
+    local msg = message:lower()
+    
+    -- Команда в чат /fly включает и выключает полет
+    if msg == "/fly" then
+        toggleFly()
+    end
+    
+    -- Команда в чат /speed ЧИСЛО (например, /speed 100) меняет скорость
+    if msg:sub(1, 7) == "/speed " then
+        local speedArg = msg:sub(8)
+        local num = tonumber(speedArg)
+        if num then
+            flySpeed = num
         end
     end
 end)
 
--- 3. Управление: персонаж летит туда, куда вы двигаете мобильный джойстик
-RunService.RenderStepped:Connect(function()
-    local camera = workspace.CurrentCamera
-    local direction = Vector3.new(0, 0, 0)
-    
-    if humanoid and humanoid.MoveDirection.Magnitude > 0 then
-        direction = humanoid.MoveDirection
-    end
-    
-    bv.velocity = direction * flySpeed
-    bg.cframe = camera.CFrame
+-- Двойной прыжок для включения/выключения на случай, если чат заблокирован
+local lastJump = 0
+LocalPlayer.CharacterAdded:Connect(function(char)
+    local humanoid = char:WaitForChild("Humanoid")
+    humanoid.Jumping:Connect(function()
+        local now = tick()
+        if now - lastJump < 0.4 then -- Если нажали прыжок дважды за полсекунды
+            toggleFly()
+        end
+        lastJump = now
+    end)
+end)
+
+-- Сброс при смерти
+LocalPlayer.CharacterAdded:Connect(function()
+    flying = false
+    if noclipConnection then noclipConnection:Disconnect() end
 end)
