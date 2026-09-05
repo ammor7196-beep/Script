@@ -1,136 +1,258 @@
-local Fluent = loadstring(game:HttpGet("https://github.com"))()
-
--- Создаем окно чита
-local Window = Fluent:CreateWindow({
-    Title = "Mobile Fly & Noclip",
-    SubTitle = "by AI Assistant",
-    TabWidth = 140,
-    Size = UDim2.fromOffset(450, 280),
-    Acrylic = false,
-    Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.LeftControl
-})
-
--- Добавляем вкладку с функциями
-local Tabs = {
-    Main = Window:AddTab({ Title = "Функции", Icon = "home" })
-}
-
--- Глобальные переменные для работы функций
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local LocalPlayer = Players.LocalPlayer
+local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
 
-local flying = false
-local noclip = false
+local player = Players.LocalPlayer
+local camera = Workspace.CurrentCamera
+
+-- === УДАЛЕНИЕ СТАРОГО МЕНЮ (чтобы не было дублей при повторном запуске) ===
+local guiName = "DeltaMobileModMenu"
+local CoreGui = game:GetService("CoreGui")
+
+-- Пытаемся найти безопасное место для GUI (защита от античита)
+local targetGuiParent = player:FindFirstChild("PlayerGui")
+pcall(function()
+    -- gethui() - это спец. функция экзекуторов, если ее нет, используем CoreGui
+    targetGuiParent = (typeof(gethui) == "function" and gethui()) or CoreGui 
+end)
+
+if targetGuiParent:FindFirstChild(guiName) then
+    targetGuiParent[guiName]:Destroy()
+end
+
+-- === ПЕРЕМЕННЫЕ ===
 local flySpeed = 50
-local bv, bg
-local noclipConnection
+local isFlying = false
+local isNoclip = false
 
--- Логика полета по направлению камеры
-local function startFlying()
-    local character = LocalPlayer.Character
-    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
-    local hrp = character.HumanoidRootPart
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
+local bodyVelocity
+local bodyGyro
+
+local PlayerModule = require(player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule"))
+
+-- === СОЗДАНИЕ ИНТЕРФЕЙСА (GUI) ===
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = guiName
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = targetGuiParent
+
+-- Кнопка открытия меню (Плавающая)
+local OpenBtn = Instance.new("TextButton")
+OpenBtn.Size = UDim2.new(0, 50, 0, 50)
+OpenBtn.Position = UDim2.new(0, 10, 0, 10)
+OpenBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+OpenBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+OpenBtn.Text = "⚙️"
+OpenBtn.Font = Enum.Font.GothamBold
+OpenBtn.TextSize = 24
+OpenBtn.Parent = ScreenGui
+
+local OpenBtnCorner = Instance.new("UICorner")
+OpenBtnCorner.CornerRadius = UDim.new(1, 0)
+OpenBtnCorner.Parent = OpenBtn
+
+-- Главная панель (Меню)
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 200, 0, 200)
+MainFrame.Position = UDim2.new(0, 70, 0, 10)
+MainFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+MainFrame.Visible = false
+MainFrame.Active = true
+MainFrame.Parent = ScreenGui
+
+local FrameCorner = Instance.new("UICorner")
+FrameCorner.CornerRadius = UDim.new(0, 8)
+FrameCorner.Parent = MainFrame
+
+-- Заголовок меню
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -30, 0, 30)
+Title.Position = UDim2.new(0, 10, 0, 0)
+Title.BackgroundTransparency = 1
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Text = "Delta Menu"
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 16
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = MainFrame
+
+-- Кнопка закрытия "X"
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 30, 0, 30)
+CloseBtn.Position = UDim2.new(1, -30, 0, 0)
+CloseBtn.BackgroundTransparency = 1
+CloseBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+CloseBtn.Text = "X"
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 16
+CloseBtn.Parent = MainFrame
+
+-- Функция для создания кнопок в меню
+local function createButton(text, yPos)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.9, 0, 0, 35)
+    btn.Position = UDim2.new(0.05, 0, 0, yPos)
+    btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Text = text
+    btn.Font = Enum.Font.GothamSemibold
+    btn.TextSize = 14
+    btn.Parent = MainFrame
     
-    if humanoid then humanoid.PlatformStand = true end
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = btn
     
-    bg = Instance.new("BodyGyro")
-    bg.P = 9e4
-    bg.maxTorque = Vector3.new(9e9, 9e9, 9e9)
-    bg.cframe = hrp.CFrame
-    bg.Parent = hrp
-    
-    bv = Instance.new("BodyVelocity")
-    bv.velocity = Vector3.new(0, 0.1, 0)
-    bv.maxForce = Vector3.new(9e9, 9e9, 9e9)
-    bv.Parent = hrp
-    
-    local camera = workspace.CurrentCamera
-    task.spawn(function()
-        while flying and character and hrp.Parent do
-            RunService.RenderStepped:Wait()
-            local direction = Vector3.new(0, 0, 0)
-            if humanoid and humanoid.MoveDirection.Magnitude > 0 then
-                local layoutRotation = math.atan2(-humanoid.MoveDirection.X, -humanoid.MoveDirection.Z)
-                local cameraRotation = math.atan2(-camera.CFrame.LookVector.X, -camera.CFrame.LookVector.Z)
-                local finalRotation = layoutRotation - cameraRotation
-                direction = (camera.CFrame * CFrame.Angles(0, finalRotation, 0)).LookVector
-            end
-            bv.velocity = direction * flySpeed
-            bg.cframe = camera.CFrame
+    return btn
+end
+
+local FlyBtn = createButton("Полет: ВЫКЛ", 40)
+local NoclipBtn = createButton("Noclip: ВЫКЛ", 85)
+
+-- Поле ввода для СВОЕЙ скорости
+local SpeedInput = Instance.new("TextBox")
+SpeedInput.Size = UDim2.new(0.9, 0, 0, 35)
+SpeedInput.Position = UDim2.new(0.05, 0, 0, 130)
+SpeedInput.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+SpeedInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+SpeedInput.PlaceholderText = "Введите скорость..."
+SpeedInput.Text = tostring(flySpeed)
+SpeedInput.Font = Enum.Font.Gotham
+SpeedInput.TextSize = 14
+SpeedInput.ClearTextOnFocus = false
+SpeedInput.Parent = MainFrame
+
+local SpeedCorner = Instance.new("UICorner")
+SpeedCorner.CornerRadius = UDim.new(0, 6)
+SpeedCorner.Parent = SpeedInput
+
+-- === ФУНКЦИЯ ДЛЯ ПЕРЕМЕЩЕНИЯ GUI (Draggable) ===
+local function makeDraggable(gui)
+    local dragging, dragInput, dragStart, startPos
+
+    gui.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = gui.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    gui.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            gui.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
         end
     end)
 end
 
-local function stopFlying()
-    flying = false
-    local character = LocalPlayer.Character
-    if character then
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
-        if humanoid then humanoid.PlatformStand = false end
-        local hrp = character:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            if bg then bg:Destroy() end
-            if bv then bv:Destroy() end
-        end
-    end
-end
+makeDraggable(MainFrame)
+makeDraggable(OpenBtn)
 
--- Логика Ноуклипа (сквозь стены)
-noclipConnection = RunService.Stepped:Connect(function()
-    if noclip then
-        local character = LocalPlayer.Character
+-- === ЛОГИКА РАБОТЫ ===
+
+OpenBtn.Activated:Connect(function()
+    MainFrame.Visible = true
+    OpenBtn.Visible = false
+end)
+
+CloseBtn.Activated:Connect(function()
+    MainFrame.Visible = false
+    OpenBtn.Visible = true
+end)
+
+SpeedInput.FocusLost:Connect(function()
+    local newSpeed = tonumber(SpeedInput.Text)
+    if newSpeed then
+        flySpeed = newSpeed
+    else
+        SpeedInput.Text = tostring(flySpeed)
+    end
+end)
+
+FlyBtn.Activated:Connect(function()
+    local character = player.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+    
+    local hrp = character.HumanoidRootPart
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+
+    isFlying = not isFlying
+
+    if isFlying then
+        FlyBtn.Text = "Полет: ВКЛ"
+        FlyBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+        humanoid.PlatformStand = true
+
+        bodyVelocity = Instance.new("BodyVelocity")
+        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+        bodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        bodyVelocity.Parent = hrp
+
+        bodyGyro = Instance.new("BodyGyro")
+        bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        bodyGyro.D = 10
+        bodyGyro.P = 10000
+        bodyGyro.Parent = hrp
+    else
+        FlyBtn.Text = "Полет: ВЫКЛ"
+        FlyBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+        humanoid.PlatformStand = false
+        if bodyVelocity then bodyVelocity:Destroy() end
+        if bodyGyro then bodyGyro:Destroy() end
+    end
+end)
+
+NoclipBtn.Activated:Connect(function()
+    isNoclip = not isNoclip
+    if isNoclip then
+        NoclipBtn.Text = "Noclip: ВКЛ"
+        NoclipBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+    else
+        NoclipBtn.Text = "Noclip: ВЫКЛ"
+        NoclipBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    end
+end)
+
+-- Обновление полета
+RunService.RenderStepped:Connect(function()
+    local character = player.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+
+    if isFlying and bodyVelocity and bodyGyro then
+        local controls = PlayerModule:GetControls()
+        local moveVector = controls:GetMoveVector()
+
+        local moveDir = (camera.CFrame.RightVector * moveVector.X) - (camera.CFrame.LookVector * moveVector.Z)
+
+        bodyVelocity.Velocity = moveDir * flySpeed
+        bodyGyro.CFrame = camera.CFrame
+    end
+end)
+
+-- Обновление Noclip
+RunService.Stepped:Connect(function()
+    if isNoclip then
+        local character = player.Character
         if character then
             for _, part in pairs(character:GetDescendants()) do
-                if part:IsA("BasePart") then
+                if part:IsA("BasePart") and part.CanCollide then
                     part.CanCollide = false
                 end
             end
         end
     end
 end)
-
--- НАСТРОЙКА ЭЛЕМЕНТОВ МЕНЮ --
-
--- 1. Переключатель FLY (Полет)
-local FlyToggle = Tabs.Main:AddToggle("FlyToggle", {Title = "Включить Полет (Fly)", Default = false})
-FlyToggle:OnChanged(function(Value)
-    flying = Value
-    if flying then
-        startFlying()
-    else
-        stopFlying()
-    end
-end)
-
--- 2. Поле ввода скорости (Input)
-local SpeedInput = Tabs.Main:AddInput("SpeedInput", {
-    Title = "Скорость полета",
-    Default = "50",
-    Numeric = true,
-    Finished = true,
-    Callback = function(Value)
-        local num = tonumber(Value)
-        if num then
-            flySpeed = num
-        end
-    end
-})
-
--- 3. Переключатель NOCLIP (Сквозь стены)
-local NoclipToggle = Tabs.Main:AddToggle("NoclipToggle", {Title = "Сквозь стены (Noclip)", Default = false})
-NoclipToggle:OnChanged(function(Value)
-    noclip = Value
-end)
-
--- Авто-сброс при перезагрузке персонажа (смерти)
-LocalPlayer.CharacterAdded:Connect(function()
-    flying = false
-    noclip = false
-    FlyToggle:SetValue(false)
-    NoclipToggle:SetValue(false)
-end)
-
-Window:SelectTab(1)
